@@ -4,18 +4,14 @@
 
 **a. Initial design**
 
-My initial design focused on three main things the user should be able to do in PawPal+:
+My initial design used four main classes: `Owner`, `Pet`, `Task`, and `Scheduler`.
 
-- Add their pet and basic owner information so the app knows who the plan is for.
-- Create and update care tasks like walks, feeding, medication, or grooming.
-- View a daily plan that shows what should be done today based on time and priority.
+- `Owner` stores the owner's basic info, available time, and preferences.
+- `Pet` stores information about each pet, like name, type, age, and notes.
+- `Task` represents a care task such as feeding, walking, medication, or grooming, including its time, frequency, and completion status.
+- `Scheduler` is responsible for retrieving tasks across pets and building a daily plan in a clear order.
 
-The four main classes I chose were `Owner`, `Pet`, `Task`, and `Scheduler`.
-
-- `Owner` holds the owner's name, available time, and preferences. It can add a pet and update preferences.
-- `Pet` holds the pet's name, type, age, and notes. It can store tasks for that pet.
-- `Task` holds the task name, duration, priority, category, and whether it is done. It can be marked complete or updated.
-- `Scheduler` holds the list of tasks and time constraints. It can generate a daily plan and explain why tasks were chosen.
+I chose these classes because they matched the main parts of the problem: who the owner is, which pet needs care, what tasks need to be done, and how the app should decide what happens each day.
 
 This was the Mermaid class diagram I would start with:
 
@@ -62,7 +58,9 @@ classDiagram
 
 **b. Design changes**
 
-I expect the design may change a little during implementation, especially if the scheduling logic needs more detail. For example, I might split scheduling rules into a separate helper if the `Scheduler` class starts doing too much.
+After reviewing the skeleton, I realized the `Scheduler` should be connected more directly to the `Owner` instead of only receiving a plain list of tasks. That makes more sense because the schedule depends on the owner's available time and preferences, not just the tasks by themselves.
+
+I also added a simple `get_tasks()` method to the `Pet` class so it is clearer how the scheduler could gather tasks from each pet. I made these changes to keep the relationships between the classes more natural and to avoid forcing too much logic into one place later.
 
 ---
 
