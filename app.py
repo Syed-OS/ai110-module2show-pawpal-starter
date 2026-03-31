@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import date, time
 
 import streamlit as st
 
@@ -14,6 +14,11 @@ def get_owner() -> Owner:
             preferences="Start with the earliest tasks first.",
         )
     return st.session_state.owner
+
+
+def get_scheduler(owner: Owner) -> Scheduler:
+    """Create a scheduler for the current owner."""
+    return Scheduler(owner)
 
 
 def find_pet(owner: Owner, pet_name: str) -> Pet | None:
@@ -34,6 +39,7 @@ def format_task_rows(owner: Owner) -> list[dict[str, str]]:
                     "Pet": pet.name,
                     "Type": pet.pet_type,
                     "Task": task.description,
+                    "Due date": str(task.due_date),
                     "Time": task.time,
                     "Frequency": task.frequency,
                     "Status": "Done" if task.completed else "To do",
@@ -42,18 +48,42 @@ def format_task_rows(owner: Owner) -> list[dict[str, str]]:
     return rows
 
 
+def format_schedule_rows(schedule: list[tuple[str, Task]]) -> list[dict[str, str]]:
+    """Turn scheduled tasks into table rows for Streamlit."""
+    return [
+        {
+            "Due date": str(task.due_date),
+            "Time": task.time,
+            "Pet": pet_name,
+            "Task": task.description,
+            "Frequency": task.frequency,
+            "Status": "Done" if task.completed else "To do",
+        }
+        for pet_name, task in schedule
+    ]
+
+
+def get_completion_options(schedule: list[tuple[str, Task]]) -> list[str]:
+    """Create readable labels for pending tasks that can be completed."""
+    return [
+        f"{pet_name} | {task.description} | {task.time} | {task.due_date}"
+        for pet_name, task in schedule
+    ]
+
+
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
 owner = get_owner()
+scheduler = get_scheduler(owner)
 
 st.title("🐾 PawPal+")
-st.markdown("Plan pet care tasks and build a simple schedule for today.")
+st.markdown("Plan pet care tasks, sort them clearly, and spot schedule conflicts early.")
 
 with st.expander("Scenario", expanded=False):
     st.markdown(
         """
 **PawPal+** helps a busy pet owner stay on top of pet care.
-You can save pet info, add tasks, and generate a schedule for the day.
+You can save pet info, add tasks, generate a schedule, filter tasks, and check for conflicts.
 """
     )
 
@@ -131,10 +161,11 @@ if owner.pets:
             options=[pet.name for pet in owner.pets],
         )
         task_description = st.text_input("Task description", value="Morning walk")
+        task_date = st.date_input("Due date", value=date.today())
         task_time = st.time_input("Task time", value=time(7, 30))
         task_frequency = st.selectbox(
             "Frequency",
-            ["Daily", "Weekdays", "Weekends", "As needed"],
+            ["Daily", "Weekly", "As needed"],
         )
         add_task = st.form_submit_button("Add task")
 
@@ -150,6 +181,7 @@ if owner.pets:
                     description=task_description.strip(),
                     time=task_time.strftime("%I:%M %p"),
                     frequency=task_frequency,
+                    due_date=task_date,
                 )
             )
             st.success(f"Task added for {pet.name}.")
@@ -158,33 +190,86 @@ else:
 
 task_rows = format_task_rows(owner)
 if task_rows:
-    st.write("Current tasks:")
+    st.write("All saved tasks:")
     st.table(task_rows)
 else:
     st.info("No tasks yet. Add one above.")
 
 st.divider()
 
-st.subheader("Today's Schedule")
-st.caption("This schedule is generated from the pets and tasks currently saved in the app.")
+st.subheader("Schedule View")
+selected_date = st.date_input("View schedule for", value=date.today(), key="schedule_date")
+pet_filter_options = ["All pets"] + [pet.name for pet in owner.pets]
+selected_pet_filter = st.selectbox("Filter by pet", pet_filter_options)
+selected_status_filter = st.selectbox("Filter by status", ["Pending", "Completed", "All"])
 
-if st.button("Generate schedule"):
-    scheduler = Scheduler(owner)
-    schedule = scheduler.generate_plan()
+completed_filter_map = {
+    "Pending": False,
+    "Completed": True,
+    "All": None,
+}
 
-    if not schedule:
-        st.warning("There are no tasks to schedule yet.")
-    else:
-        st.table(
-            [
-                {
-                    "Time": task.time,
-                    "Pet": pet_name,
-                    "Task": task.description,
-                    "Frequency": task.frequency,
-                    "Status": "Done" if task.completed else "To do",
-                }
-                for pet_name, task in schedule
-            ]
+filtered_schedule = scheduler.filter_tasks(
+    pet_name=None if selected_pet_filter == "All pets" else selected_pet_filter,
+    completed=completed_filter_map[selected_status_filter],
+    on_date=selected_date,
+)
+
+if filtered_schedule:
+    st.table(format_schedule_rows(filtered_schedule))
+else:
+    st.info("No tasks match the current filters.")
+
+conflicts = scheduler.detect_conflicts(on_date=selected_date)
+if conflicts:
+    for conflict in conflicts:
+        st.warning(
+            f"Scheduling warning: {conflict} Consider moving one task so the day is easier to manage."
         )
-        st.markdown(scheduler.explain_plan())
+else:
+    st.success("No same-time conflicts were found for this day.")
+
+st.caption("The schedule view uses the scheduler's sorting, filtering, and conflict detection methods.")
+
+st.divider()
+
+st.subheader("Complete a Task")
+pending_schedule = scheduler.generate_plan(on_date=selected_date)
+completion_options = get_completion_options(pending_schedule)
+
+if completion_options:
+    selected_completion_label = st.selectbox(
+        "Choose a pending task to mark complete",
+        completion_options,
+    )
+    if st.button("Mark selected task complete"):
+        pet_name, task_description, task_time_text, due_date_text = selected_completion_label.split(
+            " | "
+        )
+        completed_task = scheduler.mark_task_complete(
+            pet_name=pet_name,
+            task_description=task_description,
+            on_date=date.fromisoformat(due_date_text),
+            task_time=task_time_text,
+        )
+        if completed_task is None:
+            st.error("That task could not be updated. Try refreshing the schedule view.")
+        elif completed_task.frequency.lower() in {"daily", "weekly"}:
+            st.success(
+                f"Marked '{completed_task.description}' complete and created its next {completed_task.frequency.lower()} occurrence."
+            )
+        else:
+            st.success(f"Marked '{completed_task.description}' complete.")
+else:
+    st.info("There are no pending tasks to complete for this date.")
+
+st.divider()
+
+st.subheader("Plan Summary")
+schedule = scheduler.generate_plan(on_date=selected_date)
+
+if not schedule:
+    st.warning("There are no tasks to schedule for this day.")
+else:
+    st.table(format_schedule_rows(schedule))
+    st.markdown(scheduler.explain_plan(on_date=selected_date))
