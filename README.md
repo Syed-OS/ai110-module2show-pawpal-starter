@@ -23,7 +23,7 @@ Your job is to design the system first (UML), then implement the logic in Python
 
 ## 📸 Demo
 
-<a href="./Demo.png" target="_blank"><img src='./Demo.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+<a href="/course_images/ai110/Demo.png" target="_blank"><img src='/course_images/ai110/Demo.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
 
 ## Smarter Scheduling
 
