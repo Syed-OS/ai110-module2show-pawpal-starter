@@ -87,3 +87,34 @@ def test_detect_conflicts_finds_same_time_tasks() -> None:
 
     assert len(conflicts) == 1
     assert "07:30 AM" in conflicts[0]
+
+
+def test_generate_plan_returns_empty_list_when_no_tasks_exist() -> None:
+    owner = Owner(name="Jordan", available_time=120)
+    owner.add_pet(Pet(name="Mochi", pet_type="Dog", age=4))
+
+    scheduler = Scheduler(owner)
+
+    assert scheduler.generate_plan(on_date=date.today()) == []
+
+
+def test_mark_task_complete_does_not_duplicate_non_recurring_task() -> None:
+    today = date.today()
+    owner = Owner(name="Jordan", available_time=120)
+    pet = Pet(name="Mochi", pet_type="Dog", age=4)
+    pet.add_task(
+        Task(
+            description="Vet visit",
+            time="02:00 PM",
+            frequency="As needed",
+            due_date=today,
+        )
+    )
+    owner.add_pet(pet)
+
+    scheduler = Scheduler(owner)
+    completed_task = scheduler.mark_task_complete("Mochi", "Vet visit", on_date=today)
+
+    assert completed_task is not None
+    assert completed_task.completed is True
+    assert len(pet.tasks) == 1
