@@ -4,13 +4,65 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My initial design focused on three main things the user should be able to do in PawPal+:
+
+- Add their pet and basic owner information so the app knows who the plan is for.
+- Create and update care tasks like walks, feeding, medication, or grooming.
+- View a daily plan that shows what should be done today based on time and priority.
+
+The four main classes I chose were `Owner`, `Pet`, `Task`, and `Scheduler`.
+
+- `Owner` holds the owner's name, available time, and preferences. It can add a pet and update preferences.
+- `Pet` holds the pet's name, type, age, and notes. It can store tasks for that pet.
+- `Task` holds the task name, duration, priority, category, and whether it is done. It can be marked complete or updated.
+- `Scheduler` holds the list of tasks and time constraints. It can generate a daily plan and explain why tasks were chosen.
+
+This was the Mermaid class diagram I would start with:
+
+```mermaid
+classDiagram
+    class Owner {
+        +name: str
+        +available_time: int
+        +preferences: str
+        +add_pet(pet)
+        +update_preferences(preferences)
+    }
+
+    class Pet {
+        +name: str
+        +pet_type: str
+        +age: int
+        +notes: str
+        +add_task(task)
+    }
+
+    class Task {
+        +title: str
+        +duration: int
+        +priority: int
+        +category: str
+        +completed: bool
+        +mark_complete()
+        +update_task()
+    }
+
+    class Scheduler {
+        +tasks: list
+        +available_time: int
+        +generate_plan()
+        +explain_plan()
+    }
+
+    Owner "1" --> "1..*" Pet : has
+    Pet "1" --> "0..*" Task : needs
+    Scheduler "1" --> "0..*" Task : schedules
+    Scheduler --> Owner : uses preferences
+```
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+I expect the design may change a little during implementation, especially if the scheduling logic needs more detail. For example, I might split scheduling rules into a separate helper if the `Scheduler` class starts doing too much.
 
 ---
 
