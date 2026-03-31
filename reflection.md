@@ -73,8 +73,9 @@ I also added a simple `get_tasks()` method to the `Pet` class so it is clearer h
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+One tradeoff my scheduler makes is that conflict detection only checks for exact matching times instead of full overlaps based on task duration. For example, it will catch two tasks both scheduled at 7:30 AM, but it will not notice that a 30-minute task at 7:30 AM overlaps with another task at 7:45 AM.
+
+I think this tradeoff is reasonable for this version of the project because it keeps the logic simple and easy to understand while still catching obvious scheduling problems. If I had more time, I would expand it to compare task durations and detect partial overlaps too.
 
 ---
 

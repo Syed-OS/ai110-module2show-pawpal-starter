@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 
 @dataclass
@@ -9,6 +9,7 @@ class Task:
     description: str
     time: str
     frequency: str
+    due_date: date = field(default_factory=date.today)
     completed: bool = False
 
     def mark_complete(self) -> None:
@@ -24,6 +25,7 @@ class Task:
         description: str | None = None,
         time: str | None = None,
         frequency: str | None = None,
+        due_date: date | None = None,
     ) -> None:
         """Update any provided task fields."""
         if description is not None:
@@ -32,6 +34,8 @@ class Task:
             self.time = time
         if frequency is not None:
             self.frequency = frequency
+        if due_date is not None:
+            self.due_date = due_date
 
     def sort_key(self) -> datetime:
         """Convert the task time into a sortable datetime value."""
@@ -43,6 +47,23 @@ class Task:
                 continue
         raise ValueError(
             f"Unsupported time format for task '{self.description}': {self.time}"
+        )
+
+    def next_occurrence(self) -> Task | None:
+        """Create the next instance of a recurring task."""
+        frequency = self.frequency.strip().lower()
+        if frequency == "daily":
+            next_due_date = self.due_date + timedelta(days=1)
+        elif frequency == "weekly":
+            next_due_date = self.due_date + timedelta(days=7)
+        else:
+            return None
+
+        return Task(
+            description=self.description,
+            time=self.time,
+            frequency=self.frequency,
+            due_date=next_due_date,
         )
 
 
@@ -92,20 +113,115 @@ class Scheduler:
         """Create a scheduler for a specific owner."""
         self.owner = owner
 
-    def retrieve_tasks(self, include_completed: bool = False) -> list[tuple[str, Task]]:
-        """Get tasks from the owner's pets, optionally including completed ones."""
+    def retrieve_tasks(
+        self,
+        include_completed: bool = False,
+        on_date: date | None = None,
+    ) -> list[tuple[str, Task]]:
+        """Get tasks from the owner's pets with optional date and status filters."""
         tasks = self.owner.get_all_tasks()
-        if include_completed:
-            return tasks
-        return [(pet_name, task) for pet_name, task in tasks if not task.completed]
+        if not include_completed:
+            tasks = [(pet_name, task) for pet_name, task in tasks if not task.completed]
+        if on_date is not None:
+            tasks = [(pet_name, task) for pet_name, task in tasks if task.due_date == on_date]
+        return tasks
 
-    def generate_plan(self) -> list[tuple[str, Task]]:
+    def sort_by_time(
+        self,
+        tasks: list[tuple[str, Task]] | None = None,
+    ) -> list[tuple[str, Task]]:
+        """Sort a list of tasks by their time."""
+        tasks_to_sort = tasks if tasks is not None else self.retrieve_tasks()
+        return sorted(tasks_to_sort, key=lambda item: item[1].sort_key())
+
+    def filter_tasks(
+        self,
+        pet_name: str | None = None,
+        completed: bool | None = None,
+        on_date: date | None = None,
+    ) -> list[tuple[str, Task]]:
+        """Filter tasks by pet name, completion state, and optional due date."""
+        tasks = self.owner.get_all_tasks()
+
+        if pet_name is not None:
+            tasks = [
+                (current_pet_name, task)
+                for current_pet_name, task in tasks
+                if current_pet_name.lower() == pet_name.lower()
+            ]
+        if completed is not None:
+            tasks = [(current_pet_name, task) for current_pet_name, task in tasks if task.completed is completed]
+        if on_date is not None:
+            tasks = [(current_pet_name, task) for current_pet_name, task in tasks if task.due_date == on_date]
+
+        return self.sort_by_time(tasks)
+
+    def mark_task_complete(
+        self,
+        pet_name: str,
+        task_description: str,
+        on_date: date | None = None,
+        task_time: str | None = None,
+    ) -> Task | None:
+        """Mark a task complete and create the next recurring task when needed."""
+        target_date = on_date or date.today()
+
+        for pet in self.owner.pets:
+            if pet.name.lower() != pet_name.lower():
+                continue
+
+            for task in pet.tasks:
+                if task.completed:
+                    continue
+                if task.description != task_description:
+                    continue
+                if task.due_date != target_date:
+                    continue
+                if task_time is not None and task.time != task_time:
+                    continue
+
+                task.mark_complete()
+                next_task = task.next_occurrence()
+                if next_task is not None:
+                    pet.add_task(next_task)
+                return task
+
+        return None
+
+    def detect_conflicts(
+        self,
+        on_date: date | None = None,
+    ) -> list[str]:
+        """Find simple same-time conflicts in the schedule."""
+        target_date = on_date or date.today()
+        schedule = self.generate_plan(on_date=target_date)
+
+        tasks_by_time: dict[str, list[tuple[str, Task]]] = {}
+        for pet_name, task in schedule:
+            tasks_by_time.setdefault(task.time, []).append((pet_name, task))
+
+        conflicts: list[str] = []
+        for task_time, tasks_at_time in tasks_by_time.items():
+            if len(tasks_at_time) < 2:
+                continue
+
+            task_summaries = [
+                f"{pet_name} has '{task.description}'"
+                for pet_name, task in tasks_at_time
+            ]
+            conflicts.append(
+                f"Conflict at {task_time}: " + " and ".join(task_summaries) + "."
+            )
+        return conflicts
+
+    def generate_plan(self, on_date: date | None = None) -> list[tuple[str, Task]]:
         """Build a daily plan by sorting pending tasks by time."""
-        return sorted(self.retrieve_tasks(), key=lambda item: item[1].sort_key())
+        target_date = on_date or date.today()
+        return self.sort_by_time(self.retrieve_tasks(on_date=target_date))
 
-    def explain_plan(self) -> str:
+    def explain_plan(self, on_date: date | None = None) -> str:
         """Return a short explanation of the generated plan."""
-        plan = self.generate_plan()
+        plan = self.generate_plan(on_date=on_date)
         if not plan:
             return "There are no pending tasks for today."
 
@@ -114,4 +230,11 @@ class Scheduler:
             lines.append(
                 f"- {task.time}: {task.description} for {pet_name} ({task.frequency})"
             )
+
+        conflicts = self.detect_conflicts(on_date=on_date)
+        if conflicts:
+            lines.append("")
+            lines.append("Possible conflicts:")
+            lines.extend(f"- {conflict}" for conflict in conflicts)
+
         return "\n".join(lines)
